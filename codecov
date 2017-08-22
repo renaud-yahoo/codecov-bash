@@ -17,6 +17,7 @@ curlawsargs=""
 dump="0"
 clean="0"
 curl_s="-s"
+oldcurl=""
 name="$CODECOV_NAME"
 include_cov=""
 exclude_cov=""
@@ -174,6 +175,9 @@ cat << EOF
     -K           Remove color from the output
     -v           Verbose mode
 
+    -- Workarounds --
+    -o           Use a scripted URLEncode instead of cURL\'s mechanism
+
 EOF
 }
 
@@ -182,9 +186,38 @@ say() {
   echo -e "$1"
 }
 
-
-urlencode() {
+urlencodeCurl() {
   echo "$1" | curl -Gso /dev/null -w %{url_effective} --data-urlencode @- "" | cut -c 3- | sed -e 's/%0A//'
+}
+urlencodeBash() {
+  # lifted from https://newfivefour.com/unix-urlencode-urldecode-command-line-bash.html
+  # usage: urlencodeNative THE/THING
+  #  example case should give out "THE%2FTHING"
+  local length="${#1}"
+  for (( i = 0; i < length; i++ )); do
+    local c="${1:i:1}"
+    case $c in
+      [a-zA-Z0-9.~_-])
+        printf "$c";
+        ;;
+      *)
+        printf '%s' "$c" | xxd -p -c1 | while read c; do printf '%%%s' "$c"; done;
+        ;;
+    esac
+  done
+}
+urlencode() {
+  if [ ! -z "${oldcurl}" ]; then
+    (>&2 echo "================================================================================================")
+    (>&2 echo "User has indicated that the cURL tool is known to be old and could create issues with urlencode.")
+    (>&2 echo "Using special urlencode process.")
+    (>&2 echo "")
+    (>&2 echo "Warning: this could produce unexpected results. Please consider updating your tools.")
+    (>&2 echo "================================================================================================")
+    urlencodeBash $1
+  else
+    urlencodeCurl $1
+  fi
 }
 
 
@@ -229,7 +262,7 @@ parse_yaml() {
 
 if [ $# != 0 ];
 then
-  while getopts "a:A:b:B:cC:dD:e:f:F:g:G:hJ:Kn:p:P:r:R:y:s:S:t:T:u:U:vx:X:Z" o
+  while getopts "a:A:b:B:cC:dD:e:f:F:g:G:hJ:Kn:op:P:r:R:y:s:S:t:T:u:U:vx:X:Z" o
   do
     case "$o" in
       "a")
@@ -317,6 +350,9 @@ $OPTARG"
         ;;
       "p")
         proj_root="$OPTARG"
+        ;;
+      "o")
+        oldcurl="1"
         ;;
       "P")
         pr_o="$OPTARG"
